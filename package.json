@@ -1,0 +1,17 @@
+{
+  "name": "healthcare",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Library Management System",
+  "dependencies": {
+    "express": "^4.21.2",
+    "mongoose": "^5.13.8",
+    "body-parser": "^1.19.0"
+  }
+}

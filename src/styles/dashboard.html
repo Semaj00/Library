@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Library Archive Management System Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        function showSection(sectionId) {
+            document.getElementById('dashboard').style.display = 'none';
+            document.getElementById('add-new-book').style.display = 'none';
+            document.getElementById('borrow-book').style.display = 'none';
+            document.getElementById('lending-history').style.display = 'none';
+            document.getElementById('books-list-section').style.display = 'none'; // Hide books list section
+
+            document.getElementById(sectionId).style.display = 'block';
+
+            if (sectionId === 'books-list-section') {
+                fetchBooks(); // Fetch and display the list of books
+            }
+        }
+
+        function toggleOptions() {
+            const options = document.getElementById('extra-options');
+            if (options.style.display === 'none' || options.style.display === '') {
+                options.style.display = 'block';
+            } else {
+                options.style.display = 'none';
+            }
+        }
+
+        async function returnBook(row) {
+            const dateReturnedCell = row.querySelector('.date-returned');
+            const returnButton = row.querySelector('.return-button');
+            const statusCell = row.querySelector('.status');
+            const bookTitle = row.querySelector('td:nth-child(2)').textContent;
+
+            // Update the date returned to the current date
+            const currentDate = new Date().toISOString().split('T')[0];
+            dateReturnedCell.textContent = currentDate;
+
+            // Update the book's status to "available"
+            statusCell.textContent = 'Available';
+
+            // Disable the return button
+            returnButton.disabled = true;
+            returnButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+            try {
+                const response = await fetch('/return-book', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ book_title: bookTitle, date_returned: currentDate })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('Failed to return book:', errorText);
+                    throw new Error('Failed to return book');
+                }
+
+                console.log('Book returned successfully');
+                fetchBooks(); // Fetch and display the updated list of books
+                fetchLendingHistory(); // Fetch and display the updated lending history
+            } catch (error) {
+                console.error('Error returning book:', error);
+                alert('Error returning book: ' + error.message);
+            }
+        }
+
+        async function addNewBook(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const bookData = Object.fromEntries(formData.entries());
+
+            // Ensure quantity is an integer
+            bookData.quantity = parseInt(bookData.quantity, 10);
+
+            // Format the published_date to dd/mm/yyyy
+            const date = new Date(bookData.published_date);
+            const formattedDate = `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+            bookData.published_date = formattedDate;
+
+            console.log('Sending book data:', bookData); // Log the data being sent
+
+            try {
+                const response = await fetch('/add-book', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(bookData)
+                });
+
+                if (response.ok) {
+                    alert('Book added successfully');
+                    event.target.reset();
+                    fetchBooks(); // Fetch and display the updated list of books
+                } else {
+                    const errorText = await response.text();
+                    console.error('Failed to add book:', errorText);
+                    alert('Failed to add book: ' + errorText);
+                }
+            } catch (error) {
+                console.error('Error adding book:', error);
+                alert('Error adding book: ' + error.message);
+            }
+        }
+
+        function searchBooks() {
+            const searchTerm = document.getElementById('search-bar').value.toLowerCase();
+            const booksList = document.getElementById('books-list');
+            const books = booksList.getElementsByTagName('li');
+
+            for (let book of books) {
+                const title = book.textContent.toLowerCase();
+                if (title.includes(searchTerm)) {
+                    book.style.display = '';
+                } else {
+                    book.style.display = 'none';
+                }
+            }
+        }
+
+        async function fetchBooks() {
+            try {
+                const response = await fetch('/books');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const books = await response.json();
+                const booksList = document.getElementById('books-list');
+                booksList.innerHTML = '';
+                books.forEach(book => {
+                    const bookItem = document.createElement('li');
+                    const formattedDate = new Date(book.published_date).toLocaleDateString('en-GB'); // Format date to dd/mm/yyyy
+                    bookItem.textContent = `Title: ${book.title}, Author: ${book.author}, ISBN: ${book.isbn}, Published Date: ${formattedDate}, Genre: ${book.genre}, Language: ${book.language}, Shelf Location: ${book.shelf_location}, Status: ${book.status}, Quantity: ${book.quantity}, Version: ${book.__v}`;
+                    booksList.appendChild(bookItem);
+                });
+            } catch (error) {
+                console.error('Error fetching books:', error);
+            }
+        }
+
+        function showDashboard() {
+            showSection('dashboard');
+            const ctx = document.getElementById('myChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['Books', 'Borrowed Books', 'Returned Books'],
+                    datasets: [{
+                        label: '# of Books',
+                        data: [12, 19, 3],
+                        backgroundColor: [
+                            'rgba(75, 192, 192, 0.2)',
+                            'rgba(255, 99, 132, 0.2)',
+                            'rgba(54, 162, 235, 0.2)'
+                        ],
+                        borderColor: [
+                            'rgba(75, 192, 192, 1)',
+                            'rgba(255, 99, 132, 1)',
+                            'rgba(54, 162, 235, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        async function borrowBook(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const borrowData = Object.fromEntries(formData.entries());
+
+            console.log('Form data:', borrowData); // Log the form data
+
+            if (!borrowData.borrower_name || !borrowData.book_title || !borrowData.date_borrowed) {
+                console.error('Missing required fields: borrower_name, book_title, or date_borrowed');
+                alert('Please fill in all required fields: Borrower Name, Book Title, and Date Borrowed');
+                return;
+            }
+
+            try {
+                // Check if the book is available
+                const bookResponse = await fetch(`/books?title=${borrowData.book_title}`);
+                if (!bookResponse.ok) {
+                    throw new Error(`HTTP error! status: ${bookResponse.status}`);
+                }
+                const books = await bookResponse.json();
+                console.log('Books fetched:', books); // Log the fetched books
+
+                if (books.length === 0) {
+                    alert('The book is not found in the library.');
+                    return;
+                }
+
+                const book = books[0];
+                if (book.status !== 'Available') {
+                    alert('The book is currently unavailable for borrowing.');
+                    return;
+                }
+
+                console.log('Sending borrow data:', borrowData); // Log the data being sent
+
+                const response = await fetch('/borrow-book', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(borrowData)
+                });
+
+                if (response.ok) {
+                    alert('Book borrowed successfully');
+                    event.target.reset();
+                    fetchBooks(); // Fetch and display the updated list of books
+                    fetchLendingHistory(); // Fetch and display the updated lending history
+                } else {
+                    const errorText = await response.text();
+                    console.error('Failed to borrow book:', errorText);
+                    alert('Failed to borrow book: ' + errorText);
+                }
+            } catch (error) {
+                console.error('Error borrowing book:', error);
+                alert('Error borrowing book: ' + error.message);
+            }
+        }
+
+        async function fetchLendingHistory() {
+            try {
+                const response = await fetch('/lending-history');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const history = await response.json();
+                console.log('Lending history fetched:', history); // Log the fetched lending history
+                const historyTableBody = document.querySelector('#lending-history tbody');
+                historyTableBody.innerHTML = '';
+                history.forEach(entry => {
+                    console.log(`Entry: ${entry.book_title}, Date Returned: ${entry.date_returned}`); // Log each entry
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="py-2">${entry.borrower_name}</td>
+                        <td class="py-2">${entry.book_title}</td>
+                        <td class="py-2">${new Date(entry.date_borrowed).toLocaleDateString()}</td>
+                        <td class="py-2 date-returned">${entry.date_returned ? new Date(entry.date_returned).toLocaleDateString() : ''}</td>
+                        <td class="py-2 status">${entry.status}</td>
+                        <td class="py-2">
+                            <button class="px-4 py-2 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700 return-button" onclick="returnBook(this.closest('tr'))" ${entry.status === 'Available' ? 'disabled class="opacity-50 cursor-not-allowed"' : ''}>Return</button>
+                        </td>
+                    `;
+                    historyTableBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error fetching lending history:', error);
+            }
+        }
+
+        function searchLendingHistory() {
+            const searchTerm = document.getElementById('lending-history-search-bar').value.toLowerCase();
+            const historyTableBody = document.querySelector('#lending-history tbody');
+            const rows = historyTableBody.getElementsByTagName('tr');
+
+            for (let row of rows) {
+                const borrowerName = row.querySelector('td:nth-child(1)').textContent.toLowerCase();
+                if (borrowerName.includes(searchTerm)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            }
+        }
+
+        const courses = {
+            ESO: ['Civil Engineering', 'Computer Engineering', 'Electronics Communications Engineering'],
+            CCS: ['Computer Science', 'Information Technology', 'Information System'],
+            NABA: ['Industrial Technology', 'BT-VTE']
+        };
+
+        function updateCourses() {
+            const programSelect = document.getElementById('program');
+            const courseSelect = document.getElementById('course');
+            const selectedProgram = programSelect.value;
+
+            // Clear existing options
+            courseSelect.innerHTML = '';
+
+            // Populate new options
+            if (courses[selectedProgram]) {
+                courses[selectedProgram].forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course;
+                    option.textContent = course;
+                    courseSelect.appendChild(option);
+                });
+            }
+        }
+        
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+            const icon = document.getElementById('dark-mode-icon');
+            if (document.body.classList.contains('dark-mode')) {
+                icon.src = 'light.png';
+                icon.alt = 'Toggle Light Mode';
+            } else {
+                icon.src = 'dark.png';
+                icon.alt = 'Toggle Dark Mode';
+            }
+        }
+    </script>
+    <style>
+        .extra-option {
+            font-size: 0.875rem; /* Smaller font size */
+            font-family: 'Arial', sans-serif; /* Aesthetic font */
+        }
+        .logout-button img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+        .dark-mode {
+            background-color: #1a202c;
+            color: #a0aec0;
+        }
+        .dark-mode .bg-white {
+            background-color: #2d3748;
+        }
+        .dark-mode .text-gray-800 {
+            color: #a0aec0;
+        }
+        .dark-mode .text-gray-700 {
+            color: #cbd5e0;
+        }
+        .dark-mode .bg-gray-100 {
+            background-color: #1a202c;
+        }
+        .icon-button img {
+            width: 24px;
+            height: 24px;
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="min-h-screen flex flex-col">
+        <!-- Navbar -->
+        <nav class="bg-white shadow-md">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex">
+                        <div class="flex-shrink-0 flex items-center">
+                            <h1 class="text-xl font-bold">Library Archive Management System</h1>
+                        </div>
+                    </div>
+                    <div class="flex items-center ml-auto">
+                        <button class="text-gray-800 hover:text-gray-600 icon-button" onclick="toggleDarkMode()">
+                            <img src="dark.png" alt="Toggle Dark Mode" id="dark-mode-icon">
+                        </button>
+                        <button class="text-gray-800 hover:text-gray-600 logout-button" onclick="logout()">
+                            <img src="logout.png" alt="Logout">
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+        <!-- Sidebar -->
+        <div class="flex flex-1">
+            <aside class="w-64 bg-white shadow-md flex flex-col justify-between">
+                <div class="p-4">
+                    <ul>
+                        <li class="mb-4">
+                            <a href="#" class="text-gray-800 hover:text-gray-600" onclick="showDashboard()">Dashboard</a>
+                        </li>
+                        <li class="mb-4">
+                            <a href="#" class="text-gray-800 hover:text-gray-600" onclick="showSection('books-list-section')">Books</a>
+                        </li>
+                        <li class="mb-4">
+                            <a href="#" class="text-gray-800 hover:text-gray-600">Settings</a>
+                        </li>
+                        <li class="mb-4">
+                            <button onclick="toggleOptions()" class="text-gray-800 hover:text-gray-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                                </svg>
+                            </button>
+                        </li>
+                    </ul>
+                    <ul id="extra-options" style="display: none;">
+                        <li class="mb-4 extra-option">
+                            <a href="#" class="text-gray-800 hover:text-gray-600" onclick="showSection('add-new-book')">Add New Book</a>
+                        </li>
+                        <li class="mb-4 extra-option">
+                            <a href="#" class="text-gray-800 hover:text-gray-600" onclick="showSection('borrow-book')">Borrow Book</a>
+                        </li>
+                        <li class="mb-4 extra-option">
+                            <a href="#" class="text-gray-800 hover:text-gray-600" onclick="showSection('lending-history')">Lending History</a>
+                        </li>
+                    </ul>
+                </div>
+            </aside>
+            <!-- Main Content -->
+            <main class="flex-1 p-6">
+                <!-- Dashboard -->
+                <div id="dashboard" class="bg-white p-6 rounded-lg shadow-md mb-6" style="display: none;">
+                    <div class="grid grid-cols-3 gap-6 mb-6">
+                        <div class="bg-blue-500 text-white p-4 rounded-lg shadow-md" onclick="showSection('books-list-section')">
+                            <h3 class="text-lg font-bold">Books</h3>
+                            <p>Manage your book collection</p>
+                        </div>
+                        <div class="bg-green-500 text-white p-4 rounded-lg shadow-md" onclick="showSection('lending-history')">
+                            <h3 class="text-lg font-bold">Borrow Books</h3>
+                            <p>Track borrowed books</p>
+                        </div>
+                        <div class="bg-red-500 text-white p-4 rounded-lg shadow-md" onclick="showSection('lending-history')">
+                            <h3 class="text-lg font-bold">Lending History</h3>
+                            <p>View lending history</p>
+                        </div>
+                    </div>
+                    <canvas id="myChart" width="400" height="200"></canvas>
+                </div>
+                <!-- Book Archiving and Management -->
+                <div id="add-new-book" class="bg-white p-6 rounded-lg shadow-md mb-6" style="display: none;">
+                    <h2 class="text-2xl font-bold mb-6">Add New Book</h2>
+                    <form onsubmit="addNewBook(event)">
+                        <div class="grid grid-cols-1 gap-6 mb-6">
+                            <div>
+                                <label for="title" class="block text-sm font-medium text-gray-700">Title</label>
+                                <input type="text" id="title" name="title" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="author" class="block text-sm font-medium text-gray-700">Author</label>
+                                <input type="text" id="author" name="author" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="isbn" class="block text-sm font-medium text-gray-700">ISBN</label>
+                                <input type="text" id="isbn" name="isbn" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="published_date" class="block text-sm font-medium text-gray-700">Published Date</label>
+                                <input type="date" id="published_date" name="published_date" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="genre" class="block text-sm font-medium text-gray-700">Genre</label>
+                                <input type="text" id="genre" name="genre" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="language" class="block text-sm font-medium text-gray-700">Language</label>
+                                <input type="text" id="language" name="language" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="shelf_location" class="block text-sm font-medium text-gray-700">Shelf Location</label>
+                                <input type="text" id="shelf_location" name="shelf_location" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="status" class="block text-sm font-medium text-gray-700">Status</label>
+                                <select id="status" name="status" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                    <option>Available</option>
+                                    <option>Unavailable</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="quantity" class="block text-sm font-medium text-gray-700">Quantity</label>
+                                <input type="number" id="quantity" name="quantity" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700">Add Book</button>
+                        </div>
+                    </form>
+                </div>
+                <!-- Add a section to display the list of books -->
+                <div id="books-list-section" class="bg-white p-6 rounded-lg shadow-md mb-6">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Books List</h2>
+                        <input type="text" id="search-bar" class="p-2 border border-gray-300 rounded-md" placeholder="Search by title..." oninput="searchBooks()">
+                    </div>
+                    <ul id="books-list"></ul>
+                </div>
+                <!-- Borrowing System -->
+                <div id="borrow-book" class="bg-white p-6 rounded-lg shadow-md mb-6" style="display: none;">
+                    <h2 class="text-2xl font-bold mb-6">Borrow Book</h2>
+                    <form onsubmit="borrowBook(event)">
+                        <div class="grid grid-cols-1 gap-6 mb-6">
+                            <div>
+                                <label for="borrower_name" class="block text-sm font-medium text-gray-700">Borrower Name</label>
+                                <input type="text" id="borrower_name" name="borrower_name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="borrower_contact" class="block text-sm font-medium text-gray-700">Contact</label>
+                                <input type="text" id="borrower_contact" name="borrower_contact" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="book_title" class="block text-sm font-medium text-gray-700">Book Title</label>
+                                <input type="text" id="book_title" name="book_title" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="year_level" class="block text-sm font-medium text-gray-700">Year Level</label>
+                                <input type="text" id="year_level" name="year_level" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="program" class="block text-sm font-medium text-gray-700">Program</label>
+                                <select id="program" name="program" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm" onchange="updateCourses()">
+                                    <option value="">Select Program</option>
+                                    <option value="ESO">ESO</option>
+                                    <option value="CCS">CCS</option>
+                                    <option value="NABA">NABA</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="course" class="block text-sm font-medium text-gray-700">Course</label>
+                                <select id="course" name="course" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                                    <option value="">Select Course</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="date_borrowed" class="block text-sm font-medium text-gray-700">Date Borrowed</label>
+                                <input type="date" id="date_borrowed" name="date_borrowed" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md shadow-sm hover:bg-indigo-700">Borrow Book</button>
+                        </div>
+                    </form>
+                </div>
+                <!-- Lending History and Return -->
+                <div id="lending-history" class="bg-white p-6 rounded-lg shadow-md" style="display: none;">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Lending History</h2>
+                        <input type="text" id="lending-history-search-bar" class="p-2 border border-gray-300 rounded-md" placeholder="Search by borrower name..." oninput="searchLendingHistory()">
+                    </div>
+                    <table class="min-w-full bg-white">
+                        <thead>
+                            <tr>
+                                <th class="py-2">Borrower Name</th>
+                                <th class="py-2">Book Title</th>
+                                <th class="py-2">Date Borrowed</th>
+                                <th class="py-2">Date Returned</th>
+                                <th class="py-2">Status</th>
+                                <th class="py-2">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Example row -->
+                            <tr>
+                                <td class="py-2">John Doe</td>
+                                <td class="py-2">Example Book</td>
+                                <td class="py-2">2023-10-01</td>
+                                <td class="py-2 date-returned"></td>
+                                <td class="py-2 status">Unavailable</td>
+                                <td class="py-2">
+                                    <button class="px-4 py-2 bg-green-600 text-white rounded-md shadow-sm hover:bg-green-700 return-button" onclick="returnBook(this.closest('tr'))">Return</button>
+                                </td>
+                            </tr>
+                            <!-- ...additional rows... -->
+                        </tbody>
+                    </table>
+                </div>
+            </main>
+            </main>
+        </div>
+    </div>
+    <script>
+        // Show the Dashboard section by default
+        showDashboard();
+        fetchBooks(); // Fetch and display the list of books on page load
+        fetchLendingHistory(); // Fetch and display the lending history on page load
+
+        function logout() {
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>
